@@ -1,11 +1,14 @@
-// QuickEmail Extractor - Upgraded Version 2.0
+// QuickEmail Extractor - Professional Version 2.0
 class EmailExtractor {
     constructor() {
         // IMPORTANT: Update this to your actual Cloudflare Worker URL
         this.WORKER_URL = 'https://email-extractor-worker.quick3830.workers.dev';
+        
         this.emails = new Set();
         this.emailData = new Map();
         this.currentFilter = 'all';
+        this.isProcessing = false;
+        
         this.init();
     }
 
@@ -13,18 +16,27 @@ class EmailExtractor {
         this.cacheElements();
         this.bindEvents();
         this.updateStats();
+        this.checkWorkerConfiguration();
     }
 
     cacheElements() {
+        // Input elements
         this.urlInput = document.getElementById('urlInput');
         this.textInput = document.getElementById('textInput');
-        this.extractBtn = document.getElementById('extractBtn');
-        this.deepSearchBtn = document.getElementById('deepSearchBtn');
-        this.extractTextBtn = document.getElementById('extractTextBtn');
         this.followLinks = document.getElementById('followLinks');
         this.maxDepth = document.getElementById('maxDepth');
         this.maxPages = document.getElementById('maxPages');
-        this.useProxy = document.getElementById('useProxy');
+        
+        // Button elements
+        this.extractBtn = document.getElementById('extractBtn');
+        this.deepSearchBtn = document.getElementById('deepSearchBtn');
+        this.extractTextBtn = document.getElementById('extractTextBtn');
+        this.validateBtn = document.getElementById('validateBtn');
+        this.copyBtn = document.getElementById('copyBtn');
+        this.saveBtn = document.getElementById('saveBtn');
+        this.clearBtn = document.getElementById('clearBtn');
+        
+        // Display elements
         this.statusMessage = document.getElementById('statusMessage');
         this.progressSection = document.getElementById('progressSection');
         this.progressFill = document.getElementById('progressFill');
@@ -32,34 +44,34 @@ class EmailExtractor {
         this.progressDetails = document.getElementById('progressDetails');
         this.resultsSection = document.getElementById('resultsSection');
         this.emailsList = document.getElementById('emailsList');
-        this.validateBtn = document.getElementById('validateBtn');
-        this.copyBtn = document.getElementById('copyBtn');
-        this.saveBtn = document.getElementById('saveBtn');
         this.saveMenu = document.getElementById('saveMenu');
-        this.downloadBtn = document.getElementById('downloadBtn');
-        this.clearBtn = document.getElementById('clearBtn');
+        
+        // Stats elements
         this.totalCount = document.getElementById('totalCount');
         this.validCount = document.getElementById('validCount');
         this.invalidCount = document.getElementById('invalidCount');
+        
+        // Filter tabs
         this.filterTabs = document.querySelectorAll('.filter-tab');
     }
 
     bindEvents() {
+        // Main action buttons
         this.extractBtn.addEventListener('click', () => this.extractFromUrl());
         this.deepSearchBtn.addEventListener('click', () => this.deepSearch());
         this.extractTextBtn.addEventListener('click', () => this.extractFromText());
+        
+        // Results actions
         this.validateBtn.addEventListener('click', () => this.validateAllEmails());
         this.copyBtn.addEventListener('click', () => this.copyValidEmails());
-        this.downloadBtn.addEventListener('click', () => this.downloadValidEmails());
         this.clearBtn.addEventListener('click', () => this.clearResults());
         
-        // Save button dropdown
+        // Save dropdown
         this.saveBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.toggleSaveMenu();
         });
 
-        // Save format options
         const formatButtons = this.saveMenu.querySelectorAll('.dropdown-item');
         formatButtons.forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -77,14 +89,27 @@ class EmailExtractor {
             }
         });
         
+        // Filter tabs
         this.filterTabs.forEach(tab => {
             tab.addEventListener('click', (e) => this.filterEmails(e.target.dataset.filter));
         });
 
         // Enter key support
         this.urlInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') this.extractFromUrl();
+            if (e.key === 'Enter' && !this.isProcessing) this.extractFromUrl();
         });
+        
+        this.textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey && !this.isProcessing) this.extractFromText();
+        });
+    }
+
+    checkWorkerConfiguration() {
+        if (this.WORKER_URL.includes('YOUR-SUBDOMAIN')) {
+            console.warn('⚠️ Worker URL not configured. Please update WORKER_URL in script.js');
+            const banner = document.getElementById('configBanner');
+            if (banner) banner.style.display = 'flex';
+        }
     }
 
     toggleSaveMenu() {
@@ -126,11 +151,7 @@ class EmailExtractor {
         this.progressStats.textContent = `${current} / ${total} pages`;
         
         if (url) {
-            const item = document.createElement('div');
-            item.className = 'progress-item';
-            item.textContent = `Scanning: ${url}`;
-            this.progressDetails.appendChild(item);
-            this.progressDetails.scrollTop = this.progressDetails.scrollHeight;
+            this.addProgressItem(`Scanning: ${this.truncateUrl(url)}`, 'info');
         }
     }
 
@@ -161,8 +182,15 @@ class EmailExtractor {
             return;
         }
 
+        if (this.isProcessing) {
+            this.showStatus('Already processing a request. Please wait...', 'error');
+            return;
+        }
+
+        this.isProcessing = true;
         this.showStatus('Fetching webpage via Cloudflare Worker...', 'loading');
         this.extractBtn.disabled = true;
+        this.deepSearchBtn.disabled = true;
 
         try {
             const html = await this.fetchUrlContent(url);
@@ -170,9 +198,11 @@ class EmailExtractor {
             if (html) {
                 const count = this.processText(html);
                 if (count > 0) {
-                    this.showStatus(`Successfully extracted ${this.emails.size} unique emails from URL`, 'success');
+                    this.showStatus(`Successfully extracted ${count} new email${count !== 1 ? 's' : ''} (${this.emails.size} total unique)`, 'success');
+                    this.renderEmails();
+                    this.updateStats();
                 } else {
-                    this.showStatus('No email addresses found on this page', 'error');
+                    this.showStatus('No new email addresses found on this page', 'error');
                 }
             } else {
                 throw new Error('Unable to fetch content');
@@ -180,12 +210,11 @@ class EmailExtractor {
             
         } catch (error) {
             console.error('Error fetching URL:', error);
-            this.showStatus(
-                'Unable to fetch URL: ' + error.message,
-                'error'
-            );
+            this.showStatus('Unable to fetch URL: ' + error.message, 'error');
         } finally {
             this.extractBtn.disabled = false;
+            this.deepSearchBtn.disabled = false;
+            this.isProcessing = false;
         }
     }
 
@@ -202,10 +231,16 @@ class EmailExtractor {
             return;
         }
 
+        if (this.isProcessing) {
+            this.showStatus('Already processing a request. Please wait...', 'error');
+            return;
+        }
+
         const followLinks = this.followLinks.checked;
         const maxDepth = parseInt(this.maxDepth.value) || 2;
         const maxPages = parseInt(this.maxPages.value) || 10;
 
+        this.isProcessing = true;
         this.showStatus('Starting deep search via Cloudflare Worker...', 'loading');
         this.showProgress();
         this.clearProgress();
@@ -218,17 +253,15 @@ class EmailExtractor {
             if (this.emails.size > 0) {
                 this.showStatus(`Deep search complete! Found ${this.emails.size} unique emails`, 'success');
             } else {
-                this.showStatus(`Deep search complete but no emails were found`, 'error');
+                this.showStatus('Deep search complete but no emails were found', 'error');
             }
         } catch (error) {
             console.error('Deep search error:', error);
-            this.showStatus(
-                'Deep search encountered an error: ' + error.message,
-                'error'
-            );
+            this.showStatus('Deep search encountered an error: ' + error.message, 'error');
         } finally {
             this.deepSearchBtn.disabled = false;
             this.extractBtn.disabled = false;
+            this.isProcessing = false;
         }
     }
 
@@ -240,9 +273,10 @@ class EmailExtractor {
         let pagesSuccessful = 0;
         const baseUrl = new URL(startUrl);
         
-        this.addProgressItem(`Starting deep search from: ${startUrl}`, 'info');
-        this.addProgressItem(`Max depth: ${maxDepth}, Max pages: ${maxPages}`, 'info');
-        this.addProgressItem(`Using Cloudflare Worker for fetching...`, 'info');
+        this.addProgressItem(`🔍 Starting deep search from: ${startUrl}`, 'info');
+        this.addProgressItem(`⚙️ Settings - Max depth: ${maxDepth}, Max pages: ${maxPages}`, 'info');
+        this.addProgressItem(`☁️ Using Cloudflare Worker for fetching...`, 'info');
+        this.addProgressItem('', 'info');
 
         while (toVisit.length > 0 && pagesScanned < maxPages) {
             const { url, depth } = toVisit.shift();
@@ -257,8 +291,6 @@ class EmailExtractor {
             this.updateProgress(pagesScanned, Math.min(maxPages, toVisit.length + pagesScanned + 1), url);
 
             try {
-                this.addProgressItem(`[${pagesScanned}/${maxPages}] Fetching: ${this.truncateUrl(url)}`, 'info');
-                
                 const text = await this.fetchUrlContent(url);
                 
                 if (text) {
@@ -268,9 +300,9 @@ class EmailExtractor {
                     const newEmails = this.emails.size - emailsBefore;
                     
                     if (newEmails > 0) {
-                        this.addProgressItem(`  ✓ Found ${newEmails} new email${newEmails > 1 ? 's' : ''}`, 'success');
+                        this.addProgressItem(`  ✓ Page ${pagesScanned}: Found ${newEmails} new email${newEmails > 1 ? 's' : ''}`, 'success');
                     } else {
-                        this.addProgressItem(`  ○ No new emails found`, 'info');
+                        this.addProgressItem(`  ○ Page ${pagesScanned}: No new emails`, 'info');
                     }
 
                     // Extract and queue new links if following links
@@ -289,20 +321,20 @@ class EmailExtractor {
                         }
                         
                         if (addedLinks > 0) {
-                            this.addProgressItem(`  → Queued ${addedLinks} internal link${addedLinks > 1 ? 's' : ''}`, 'info');
+                            this.addProgressItem(`    → Queued ${addedLinks} internal link${addedLinks > 1 ? 's' : ''} for depth ${depth + 1}`, 'info');
                         }
                     }
                 } else {
                     failed.add(url);
-                    this.addProgressItem(`  ✗ Unable to fetch this page`, 'error');
+                    this.addProgressItem(`  ✗ Page ${pagesScanned}: Unable to fetch`, 'error');
                 }
                 
-                // Small delay between requests
-                await new Promise(resolve => setTimeout(resolve, 300));
+                // Delay between requests to avoid overwhelming servers
+                await new Promise(resolve => setTimeout(resolve, 500));
                 
             } catch (error) {
                 failed.add(url);
-                this.addProgressItem(`  ✗ Error: ${error.message}`, 'error');
+                this.addProgressItem(`  ✗ Page ${pagesScanned}: ${error.message}`, 'error');
                 console.error('Error processing URL:', error);
             }
         }
@@ -313,18 +345,25 @@ class EmailExtractor {
             this.updateStats();
         }
         
-        this.addProgressItem(``, 'info');
-        this.addProgressItem(`=== Search Complete ===`, 'success');
-        this.addProgressItem(`Pages attempted: ${pagesScanned}`, 'info');
-        this.addProgressItem(`Pages successful: ${pagesSuccessful}`, pagesSuccessful > 0 ? 'success' : 'error');
-        this.addProgressItem(`Pages failed: ${failed.size}`, 'info');
-        this.addProgressItem(`Unique emails found: ${this.emails.size}`, this.emails.size > 0 ? 'success' : 'info');
+        this.addProgressItem('', 'info');
+        this.addProgressItem(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        this.addProgressItem(`✓ Deep Search Complete`, 'success');
+        this.addProgressItem(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, 'info');
+        this.addProgressItem(`📊 Pages attempted: ${pagesScanned}`, 'info');
+        this.addProgressItem(`✓ Pages successful: ${pagesSuccessful}`, pagesSuccessful > 0 ? 'success' : 'error');
+        this.addProgressItem(`✗ Pages failed: ${failed.size}`, failed.size > 0 ? 'error' : 'info');
+        this.addProgressItem(`📧 Unique emails found: ${this.emails.size}`, this.emails.size > 0 ? 'success' : 'info');
     }
 
     truncateUrl(url) {
-        if (url.length <= 60) return url;
-        const urlObj = new URL(url);
-        return urlObj.hostname + urlObj.pathname.substring(0, 40) + '...';
+        if (url.length <= 70) return url;
+        try {
+            const urlObj = new URL(url);
+            const path = urlObj.pathname.length > 40 ? urlObj.pathname.substring(0, 37) + '...' : urlObj.pathname;
+            return urlObj.hostname + path;
+        } catch {
+            return url.substring(0, 67) + '...';
+        }
     }
 
     async fetchUrlContent(url) {
@@ -332,7 +371,8 @@ class EmailExtractor {
             const response = await fetch(`${this.WORKER_URL}/fetch`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
                 },
                 body: JSON.stringify({ url: url })
             });
@@ -352,7 +392,9 @@ class EmailExtractor {
             }
 
         } catch (error) {
-            console.error('Worker fetch error:', error);
+            if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+                throw new Error('Worker connection failed. Check if WORKER_URL is configured correctly.');
+            }
             throw error;
         }
     }
@@ -401,17 +443,31 @@ class EmailExtractor {
             return;
         }
 
+        if (this.isProcessing) {
+            this.showStatus('Already processing a request. Please wait...', 'error');
+            return;
+        }
+
+        this.isProcessing = true;
         this.showStatus('Extracting emails from text...', 'loading');
         this.extractTextBtn.disabled = true;
 
         setTimeout(() => {
-            this.processText(text);
-            this.showStatus(`Successfully extracted ${this.emails.size} unique emails`, 'success');
+            const count = this.processText(text);
+            if (count > 0) {
+                this.showStatus(`Successfully extracted ${count} new email${count !== 1 ? 's' : ''} (${this.emails.size} total unique)`, 'success');
+                this.renderEmails();
+                this.updateStats();
+            } else {
+                this.showStatus('No new email addresses found in the text', 'error');
+            }
             this.extractTextBtn.disabled = false;
+            this.isProcessing = false;
         }, 300);
     }
 
     processText(text, shouldRender = true) {
+        // Enhanced email regex following RFC 5322
         const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
         const matches = text.match(emailRegex);
 
@@ -420,7 +476,8 @@ class EmailExtractor {
             
             matches.forEach(email => {
                 const normalizedEmail = email.toLowerCase();
-                if (!this.emails.has(normalizedEmail)) {
+                // Basic validation before adding
+                if (this.isEmailFormatValid(normalizedEmail) && !this.emails.has(normalizedEmail)) {
                     this.emails.add(normalizedEmail);
                     this.emailData.set(normalizedEmail, {
                         email: normalizedEmail,
@@ -431,15 +488,14 @@ class EmailExtractor {
             });
 
             const newEmails = this.emails.size - previousCount;
+            
             if (newEmails > 0 && shouldRender) {
                 this.renderEmails();
                 this.updateStats();
             }
+            
             return newEmails;
         } else {
-            if (shouldRender) {
-                this.showStatus('No email addresses found in the text', 'error');
-            }
             return 0;
         }
     }
@@ -453,7 +509,17 @@ class EmailExtractor {
         }
     }
 
+    isEmailFormatValid(email) {
+        // Quick format check before adding
+        const parts = email.split('@');
+        if (parts.length !== 2) return false;
+        if (parts[0].length === 0 || parts[1].length === 0) return false;
+        if (!parts[1].includes('.')) return false;
+        return true;
+    }
+
     validateEmail(email) {
+        // RFC 5322 compliant email validation
         const regex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
         
         if (!regex.test(email)) {
@@ -462,23 +528,34 @@ class EmailExtractor {
 
         const [localPart, domain] = email.split('@');
         
+        // Local part validation
         if (localPart.length > 64) return false;
         if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
         if (localPart.includes('..')) return false;
         
+        // Domain validation
         if (domain.length > 255) return false;
         if (domain.startsWith('-') || domain.endsWith('-')) return false;
         if (domain.startsWith('.') || domain.endsWith('.')) return false;
         
         const parts = domain.split('.');
         if (parts.length < 2) return false;
+        
         const tld = parts[parts.length - 1];
         if (tld.length < 2) return false;
+        
+        // Check for valid TLD characters
+        if (!/^[a-zA-Z]{2,}$/.test(tld)) return false;
         
         return true;
     }
 
     validateAllEmails() {
+        if (this.emails.size === 0) {
+            this.showStatus('No emails to validate', 'error');
+            return;
+        }
+
         this.showStatus('Validating all emails...', 'loading');
         this.validateBtn.disabled = true;
 
@@ -497,7 +574,8 @@ class EmailExtractor {
         setTimeout(() => {
             this.renderEmails();
             this.updateStats();
-            this.showStatus(`Validated ${validatedCount} emails`, 'success');
+            const validCount = Array.from(this.emailData.values()).filter(d => d.valid === true).length;
+            this.showStatus(`Validated ${validatedCount} emails (${validCount} valid, ${validatedCount - validCount} invalid)`, 'success');
             this.validateBtn.disabled = false;
         }, 500);
     }
@@ -519,46 +597,27 @@ class EmailExtractor {
         const emailText = validEmails.join('\n');
         
         navigator.clipboard.writeText(emailText).then(() => {
-            this.showStatus(`Copied ${validEmails.length} valid emails to clipboard`, 'success');
+            this.showStatus(`Copied ${validEmails.length} valid email${validEmails.length !== 1 ? 's' : ''} to clipboard`, 'success');
         }).catch(err => {
             console.error('Failed to copy:', err);
-            this.showStatus('Failed to copy to clipboard', 'error');
+            
+            // Fallback method
+            const textArea = document.createElement('textarea');
+            textArea.value = emailText;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                this.showStatus(`Copied ${validEmails.length} valid email${validEmails.length !== 1 ? 's' : ''} to clipboard`, 'success');
+            } catch (err) {
+                this.showStatus('Failed to copy to clipboard', 'error');
+            }
+            
+            document.body.removeChild(textArea);
         });
-    }
-
-    downloadValidEmails() {
-        const validEmails = this.getValidEmails();
-        
-        if (validEmails.length === 0) {
-            this.showStatus('No valid emails to download. Validate emails first.', 'error');
-            return;
-        }
-
-        // Create CSV content with only valid emails
-        let csvContent = 'Email Address,Status,Validated At\n';
-        const timestamp = new Date().toLocaleString();
-        
-        validEmails.forEach(email => {
-            csvContent += `${email},Valid,${timestamp}\n`;
-        });
-
-        // Create blob and download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        
-        const dateStr = new Date().toISOString().slice(0, 10);
-        link.setAttribute('href', url);
-        link.setAttribute('download', `valid-emails-${dateStr}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        URL.revokeObjectURL(url);
-        
-        this.showStatus(`Downloaded ${validEmails.length} valid emails as CSV`, 'success');
     }
 
     saveValidEmails(format) {
@@ -602,7 +661,7 @@ class EmailExtractor {
         }
 
         this.downloadFile(content, `valid-emails-${timestamp}.${extension}`, mimeType);
-        this.showStatus(`Saved ${validEmails.length} valid emails as ${extension.toUpperCase()}`, 'success');
+        this.showStatus(`Saved ${validEmails.length} valid email${validEmails.length !== 1 ? 's' : ''} as ${extension.toUpperCase()}`, 'success');
     }
 
     generateTxtFile(emails) {
@@ -615,10 +674,11 @@ class EmailExtractor {
     }
 
     generateCsvFile(emails) {
-        let csv = 'Email Address,Status,Validated At\n';
+        let csv = 'Email Address,Status,Domain,Validated At\n';
         const timestamp = new Date().toLocaleString();
         emails.forEach(email => {
-            csv += `${email},Valid,${timestamp}\n`;
+            const domain = email.split('@')[1];
+            csv += `${email},Valid,${domain},${timestamp}\n`;
         });
         return csv;
     }
@@ -629,18 +689,23 @@ class EmailExtractor {
                 generated: new Date().toISOString(),
                 total_emails: emails.length,
                 status: 'valid',
-                tool: 'QuickEmail Extractor v2.0'
+                tool: 'QuickEmail Extractor v2.0',
+                validator: 'RFC 5322 compliant'
             },
             emails: emails.map(email => ({
                 address: email,
                 status: 'valid',
-                validated: true
+                validated: true,
+                domain: email.split('@')[1],
+                local_part: email.split('@')[0]
             }))
         };
         return JSON.stringify(data, null, 2);
     }
 
     generateHtmlFile(emails) {
+        const domains = [...new Set(emails.map(e => e.split('@')[1]))];
+        
         let html = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -650,13 +715,13 @@ class EmailExtractor {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             padding: 40px 20px;
             min-height: 100vh;
         }
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -669,14 +734,8 @@ class EmailExtractor {
             padding: 40px;
             text-align: center;
         }
-        .header h1 {
-            font-size: 2.5rem;
-            margin-bottom: 10px;
-        }
-        .header p {
-            opacity: 0.9;
-            font-size: 1.1rem;
-        }
+        .header h1 { font-size: 2.5rem; margin-bottom: 10px; }
+        .header p { opacity: 0.9; font-size: 1.1rem; }
         .stats {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -707,38 +766,9 @@ class EmailExtractor {
         .emails {
             padding: 40px;
         }
-        .email-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 15px;
-        }
-        .email-item {
-            padding: 15px 20px;
-            background: #f8f9fa;
-            border-left: 4px solid #667eea;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.95rem;
-            color: #495057;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .email-item:hover {
-            background: #e7f3ff;
-            border-left-color: #764ba2;
-            transform: translateX(5px);
-        }
-        .footer {
-            padding: 30px 40px;
-            background: #f8f9fa;
-            text-align: center;
-            color: #6c757d;
-            font-size: 0.9rem;
-            border-top: 2px solid #e9ecef;
-        }
         .copy-all {
             display: inline-block;
-            margin: 20px 0;
+            margin: 0 0 20px 0;
             padding: 12px 30px;
             background: #667eea;
             color: white;
@@ -754,12 +784,42 @@ class EmailExtractor {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
+        .email-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        .email-item {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95rem;
+            color: #495057;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            word-break: break-all;
+        }
+        .email-item:hover {
+            background: #e7f3ff;
+            border-left-color: #764ba2;
+            transform: translateX(5px);
+        }
+        .footer {
+            padding: 30px 40px;
+            background: #f8f9fa;
+            text-align: center;
+            color: #6c757d;
+            font-size: 0.9rem;
+            border-top: 2px solid #e9ecef;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>✉️ Valid Email Addresses</h1>
+            <h1>📧 Valid Email Addresses</h1>
             <p>Generated on ${new Date().toLocaleString()}</p>
         </div>
         
@@ -773,7 +833,7 @@ class EmailExtractor {
                 <div class="stat-label">All Validated</div>
             </div>
             <div class="stat-box">
-                <div class="stat-value">${new Set(emails.map(e => e.split('@')[1])).size}</div>
+                <div class="stat-value">${domains.length}</div>
                 <div class="stat-label">Unique Domains</div>
             </div>
         </div>
@@ -781,28 +841,33 @@ class EmailExtractor {
         <div class="emails">
             <button class="copy-all" onclick="copyAllEmails()">📋 Copy All Emails</button>
             <div class="email-grid">
-${emails.map(email => `                <div class="email-item" onclick="copyEmail('${email}')">${email}</div>`).join('\n')}
+${emails.map(email => `                <div class="email-item" onclick="copyEmail('${email}')" title="Click to copy">${email}</div>`).join('\n')}
             </div>
         </div>
         
         <div class="footer">
-            <p><strong>QuickEmail Extractor Tool</strong></p>
-            <p>Generated with QuickEmail Extractor v2.0 • ${emails.length} valid email addresses</p>
+            <p><strong>QuickEmail Extractor v2.0</strong></p>
+            <p>Generated with QuickEmail Extractor • ${emails.length} valid email addresses</p>
+            <p style="margin-top: 10px; font-size: 0.8rem;">RFC 5322 compliant validation</p>
         </div>
     </div>
     
     <script>
         function copyEmail(email) {
             navigator.clipboard.writeText(email).then(() => {
-                alert('Copied: ' + email);
+                alert('✓ Copied: ' + email);
+            }).catch(() => {
+                alert('Failed to copy email');
             });
         }
         
         function copyAllEmails() {
             const emails = Array.from(document.querySelectorAll('.email-item'))
-                .map(el => el.textContent);
+                .map(el => el.textContent.trim());
             navigator.clipboard.writeText(emails.join('\\n')).then(() => {
-                alert('Copied all ' + emails.length + ' emails!');
+                alert('✓ Copied all ' + emails.length + ' emails to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy emails');
             });
         }
     </script>
@@ -828,7 +893,12 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
     }
 
     clearResults() {
-        if (confirm('Are you sure you want to clear all results?')) {
+        if (this.emails.size === 0) {
+            this.showStatus('No results to clear', 'error');
+            return;
+        }
+
+        if (confirm(`Are you sure you want to clear all ${this.emails.size} extracted emails?`)) {
             this.emails.clear();
             this.emailData.clear();
             this.emailsList.innerHTML = '';
@@ -837,8 +907,18 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
             this.hideStatus();
             this.hideProgress();
             this.clearProgress();
-            this.urlInput.value = '';
-            this.textInput.value = '';
+            this.currentFilter = 'all';
+            
+            // Reset filter tabs
+            this.filterTabs.forEach(tab => {
+                if (tab.dataset.filter === 'all') {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            
+            this.showStatus('Results cleared successfully', 'success');
         }
     }
 
@@ -890,7 +970,7 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
         filteredEmails.forEach((data, index) => {
             const emailItem = document.createElement('div');
             emailItem.className = `email-item ${data.status}`;
-            emailItem.style.animationDelay = `${index * 0.05}s`;
+            emailItem.style.animationDelay = `${index * 0.03}s`;
             
             let statusIcon = '●';
             let statusText = 'Unchecked';
@@ -911,6 +991,15 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
                 </span>
             `;
 
+            // Click to copy functionality
+            emailItem.addEventListener('click', () => {
+                navigator.clipboard.writeText(data.email).then(() => {
+                    this.showStatus(`Copied: ${data.email}`, 'success');
+                }).catch(() => {
+                    this.showStatus('Failed to copy email', 'error');
+                });
+            });
+
             this.emailsList.appendChild(emailItem);
         });
     }
@@ -927,6 +1016,9 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
 
     animateCounter(element, target) {
         const current = parseInt(element.textContent) || 0;
+        
+        if (current === target) return;
+        
         const increment = target > current ? 1 : -1;
         const duration = 500;
         const steps = Math.abs(target - current);
@@ -940,11 +1032,12 @@ ${emails.map(email => `                <div class="email-item" onclick="copyEmai
             if (count === target) {
                 clearInterval(timer);
             }
-        }, stepDuration);
+        }, Math.max(stepDuration, 20));
     }
 }
 
-// Initialize the application
+// Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 QuickEmail Extractor v2.0 initialized');
     new EmailExtractor();
 });
