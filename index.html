@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bulk Email Extractor</title>
+    <title>QuickEmail Extractor</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,8 +41,7 @@
             <div class="info-banner">
                 <div class="info-icon">ℹ️</div>
                 <div class="info-content">
-                    <strong>CORS Proxy Enabled:</strong> This tool automatically uses proxy services to fetch websites. 
-                    Most sites will work, but some with strict security may require manual copy-paste.
+                    <strong>Cloudflare Worker Enabled:</strong> This tool uses a Cloudflare Worker backend to bypass CORS and fetch websites reliably.
                 </div>
             </div>
 
@@ -84,7 +83,7 @@
                         <div class="option-group">
                             <label class="checkbox-label">
                                 <input type="checkbox" id="useProxy" checked>
-                                <span>Use CORS proxy</span>
+                                <span>Use Worker proxy</span>
                             </label>
                         </div>
                     </div>
@@ -169,7 +168,7 @@
                         </div>
                         <button id="downloadBtn" class="action-btn">
                             <span class="btn-icon">↓</span>
-                            Download All
+                            Download Valid
                         </button>
                         <button id="clearBtn" class="action-btn danger">
                             <span class="btn-icon">×</span>
@@ -190,7 +189,7 @@
         </main>
 
         <footer class="footer">
-            <p>Built with HTML, CSS & JavaScript • Email validation powered by regex & syntax checking</p>
+            <p>Built with HTML, CSS & JavaScript • Powered by Cloudflare Workers • Email validation by regex</p>
         </footer>
     </div>
 
