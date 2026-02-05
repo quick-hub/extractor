@@ -32,6 +32,8 @@ class EmailExtractor {
         this.extractTextBtn = document.getElementById('extractTextBtn');
         this.validateBtn = document.getElementById('validateBtn');
         this.copyBtn = document.getElementById('copyBtn');
+        this.copyAllBtn = document.getElementById('copyAllBtn');
+        this.exportBtn = document.getElementById('exportBtn');
         this.saveBtn = document.getElementById('saveBtn');
         this.clearBtn = document.getElementById('clearBtn');
 
@@ -49,6 +51,11 @@ class EmailExtractor {
         this.invalidCount = document.getElementById('invalidCount');
 
         this.filterTabs = document.querySelectorAll('.filter-tab');
+        
+        // Output options
+        this.separator = document.getElementById('separator');
+        this.sortAlpha = document.getElementById('sortAlpha');
+        this.removeDuplicates = document.getElementById('removeDuplicates');
     }
 
     bindEvents() {
@@ -57,11 +64,29 @@ class EmailExtractor {
         this.extractTextBtn.onclick = () => this.extractFromText();
         this.validateBtn.onclick = () => this.validateAllEmails();
         this.copyBtn.onclick = () => this.copyValidEmails();
+        this.copyAllBtn.onclick = () => this.copyAllEmails();
+        this.exportBtn.onclick = () => this.exportEmails();
         this.clearBtn.onclick = () => this.clearResults();
 
         this.filterTabs.forEach(tab =>
             tab.onclick = () => this.filterEmails(tab.dataset.filter)
         );
+
+        // Update character count
+        this.textInput.addEventListener('input', () => {
+            const charCount = document.getElementById('charCount');
+            if (charCount) {
+                charCount.textContent = this.textInput.value.length;
+            }
+        });
+
+        // Update output preview when options change
+        if (this.separator) {
+            this.separator.addEventListener('change', () => this.updateOutputPreview());
+        }
+        if (this.sortAlpha) {
+            this.sortAlpha.addEventListener('change', () => this.updateOutputPreview());
+        }
     }
 
     /* ================= WORKER ================= */
@@ -302,11 +327,18 @@ class EmailExtractor {
             };
             this.emailsList.appendChild(div);
         });
+        
+        // Update output preview
+        this.updateOutputPreview();
     }
 
     filterEmails(f) {
         this.currentFilter = f;
-        this.filterTabs.forEach(t => t.classList.toggle('active', t.dataset.filter === f));
+        this.filterTabs.forEach(t => {
+            const isActive = t.dataset.filter === f;
+            t.classList.toggle('active', isActive);
+            t.setAttribute('aria-selected', isActive);
+        });
         this.renderEmails();
     }
 
@@ -339,7 +371,15 @@ class EmailExtractor {
         this.progressDetails.innerHTML = '';
     }
     updateProgress(c, t, u) {
-        this.progressFill.style.width = `${(c / t) * 100}%`;
+        const percentage = Math.round((c / t) * 100);
+        this.progressFill.style.width = `${percentage}%`;
+        
+        // Update ARIA attributes
+        const progressBar = this.progressSection.querySelector('.progress-bar');
+        if (progressBar) {
+            progressBar.setAttribute('aria-valuenow', percentage);
+        }
+        
         this.progressDetails.innerHTML += `<div>Scanning: ${u}</div>`;
     }
 
@@ -360,10 +400,128 @@ class EmailExtractor {
     }
 
     copyValidEmails() {
-        const e = this.getValidEmails();
-        if (!e.length) return this.showStatus('No valid emails', 'error');
-        navigator.clipboard.writeText(e.join('\n'));
-        this.showStatus(`Copied ${e.length} emails`, 'success');
+        let emails = this.getValidEmails();
+        if (!emails.length) return this.showStatus('No valid emails', 'error');
+        
+        // Apply sorting if enabled
+        if (this.sortAlpha && this.sortAlpha.checked) {
+            emails = emails.sort();
+        }
+        
+        // Get separator
+        const separatorMap = {
+            'newline': '\n',
+            'comma': ', ',
+            'semicolon': '; ',
+            'pipe': ' | ',
+            'space': ' ',
+            'tab': '\t'
+        };
+        const sep = separatorMap[this.separator.value] || '\n';
+        
+        navigator.clipboard.writeText(emails.join(sep));
+        this.showStatus(`Copied ${emails.length} emails`, 'success');
+    }
+
+    copyAllEmails() {
+        let emails = [...this.emails];
+        if (!emails.length) return this.showStatus('No emails to copy', 'error');
+        
+        // Apply sorting if enabled
+        if (this.sortAlpha && this.sortAlpha.checked) {
+            emails = emails.sort();
+        }
+        
+        // Get separator
+        const separatorMap = {
+            'newline': '\n',
+            'comma': ', ',
+            'semicolon': '; ',
+            'pipe': ' | ',
+            'space': ' ',
+            'tab': '\t'
+        };
+        const sep = separatorMap[this.separator.value] || '\n';
+        
+        navigator.clipboard.writeText(emails.join(sep));
+        this.showStatus(`Copied ${emails.length} emails`, 'success');
+    }
+
+    exportEmails() {
+        let emails = this.getValidEmails();
+        if (!emails.length) return this.showStatus('No valid emails to export', 'error');
+        
+        // Apply sorting if enabled
+        if (this.sortAlpha && this.sortAlpha.checked) {
+            emails = emails.sort();
+        }
+        
+        // Get separator
+        const separatorMap = {
+            'newline': '\n',
+            'comma': ', ',
+            'semicolon': '; ',
+            'pipe': ' | ',
+            'space': ' ',
+            'tab': '\t'
+        };
+        const sep = separatorMap[this.separator.value] || '\n';
+        
+        // Create download
+        const content = emails.join(sep);
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `emails-${new Date().toISOString().split('T')[0]}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        this.showStatus(`Exported ${emails.length} emails`, 'success');
+    }
+
+    updateOutputPreview() {
+        const previewSection = document.getElementById('outputPreviewSection');
+        const preview = document.getElementById('outputPreview');
+        
+        if (!previewSection || !preview) return;
+        
+        let emails = this.getValidEmails();
+        
+        if (!emails.length) {
+            previewSection.style.display = 'none';
+            return;
+        }
+        
+        // Show preview section
+        previewSection.style.display = 'block';
+        
+        // Apply sorting if enabled
+        if (this.sortAlpha && this.sortAlpha.checked) {
+            emails = emails.sort();
+        }
+        
+        // Get separator
+        const separatorMap = {
+            'newline': '\n',
+            'comma': ', ',
+            'semicolon': '; ',
+            'pipe': ' | ',
+            'space': ' ',
+            'tab': '\t'
+        };
+        const sep = separatorMap[this.separator.value] || '\n';
+        
+        // Limit preview to first 50 emails
+        const previewEmails = emails.slice(0, 50);
+        const hasMore = emails.length > 50;
+        
+        preview.textContent = previewEmails.join(sep);
+        if (hasMore) {
+            preview.textContent += `\n\n... and ${emails.length - 50} more`;
+        }
     }
 }
 
