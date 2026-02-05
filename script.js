@@ -1,6 +1,8 @@
-// Email Extractor and Validator
+// QuickEmail Extractor - Upgraded Version 2.0
 class EmailExtractor {
     constructor() {
+        // IMPORTANT: Update this to your actual Cloudflare Worker URL
+        this.WORKER_URL = 'https://email-extractor-worker.quick3830.workers.dev';
         this.emails = new Set();
         this.emailData = new Map();
         this.currentFilter = 'all';
@@ -10,6 +12,7 @@ class EmailExtractor {
     init() {
         this.cacheElements();
         this.bindEvents();
+        this.updateStats();
     }
 
     cacheElements() {
@@ -47,7 +50,7 @@ class EmailExtractor {
         this.extractTextBtn.addEventListener('click', () => this.extractFromText());
         this.validateBtn.addEventListener('click', () => this.validateAllEmails());
         this.copyBtn.addEventListener('click', () => this.copyValidEmails());
-        this.downloadBtn.addEventListener('click', () => this.downloadEmails());
+        this.downloadBtn.addEventListener('click', () => this.downloadValidEmails());
         this.clearBtn.addEventListener('click', () => this.clearResults());
         
         // Save button dropdown
@@ -154,11 +157,11 @@ class EmailExtractor {
         }
 
         if (!this.isValidUrl(url)) {
-            this.showStatus('Please enter a valid URL', 'error');
+            this.showStatus('Please enter a valid URL (starting with http:// or https://)', 'error');
             return;
         }
 
-        this.showStatus('Fetching webpage content...', 'loading');
+        this.showStatus('Fetching webpage via Cloudflare Worker...', 'loading');
         this.extractBtn.disabled = true;
 
         try {
@@ -178,8 +181,7 @@ class EmailExtractor {
         } catch (error) {
             console.error('Error fetching URL:', error);
             this.showStatus(
-                'Unable to fetch URL. The website may be blocking automated requests. ' +
-                'Try the "Deep Search" button or copy the page content and use "Extract from Text" instead.',
+                'Unable to fetch URL: ' + error.message,
                 'error'
             );
         } finally {
@@ -204,7 +206,7 @@ class EmailExtractor {
         const maxDepth = parseInt(this.maxDepth.value) || 2;
         const maxPages = parseInt(this.maxPages.value) || 10;
 
-        this.showStatus('Starting deep search with CORS proxy...', 'loading');
+        this.showStatus('Starting deep search via Cloudflare Worker...', 'loading');
         this.showProgress();
         this.clearProgress();
         this.deepSearchBtn.disabled = true;
@@ -216,13 +218,12 @@ class EmailExtractor {
             if (this.emails.size > 0) {
                 this.showStatus(`Deep search complete! Found ${this.emails.size} unique emails`, 'success');
             } else {
-                this.showStatus(`Deep search complete but no emails were found. The website may be blocking automated access.`, 'error');
+                this.showStatus(`Deep search complete but no emails were found`, 'error');
             }
         } catch (error) {
             console.error('Deep search error:', error);
             this.showStatus(
-                'Deep search encountered an error. Some pages may be blocking automated requests. ' +
-                'Try reducing the max pages or copy content manually.',
+                'Deep search encountered an error: ' + error.message,
                 'error'
             );
         } finally {
@@ -241,7 +242,7 @@ class EmailExtractor {
         
         this.addProgressItem(`Starting deep search from: ${startUrl}`, 'info');
         this.addProgressItem(`Max depth: ${maxDepth}, Max pages: ${maxPages}`, 'info');
-        this.addProgressItem(`Using CORS proxy services for URL fetching...`, 'info');
+        this.addProgressItem(`Using Cloudflare Worker for fetching...`, 'info');
 
         while (toVisit.length > 0 && pagesScanned < maxPages) {
             const { url, depth } = toVisit.shift();
@@ -280,7 +281,6 @@ class EmailExtractor {
                         for (const link of links) {
                             if (!visited.has(link) && !failed.has(link) && 
                                 toVisit.length + pagesScanned < maxPages) {
-                                // Avoid adding duplicate links to queue
                                 if (!toVisit.some(item => item.url === link)) {
                                     toVisit.push({ url: link, depth: depth + 1 });
                                     addedLinks++;
@@ -294,11 +294,11 @@ class EmailExtractor {
                     }
                 } else {
                     failed.add(url);
-                    this.addProgressItem(`  ✗ Unable to fetch this page (blocked or unavailable)`, 'error');
+                    this.addProgressItem(`  ✗ Unable to fetch this page`, 'error');
                 }
                 
-                // Small delay to prevent overwhelming proxies
-                await new Promise(resolve => setTimeout(resolve, 200));
+                // Small delay between requests
+                await new Promise(resolve => setTimeout(resolve, 300));
                 
             } catch (error) {
                 failed.add(url);
@@ -319,12 +319,6 @@ class EmailExtractor {
         this.addProgressItem(`Pages successful: ${pagesSuccessful}`, pagesSuccessful > 0 ? 'success' : 'error');
         this.addProgressItem(`Pages failed: ${failed.size}`, 'info');
         this.addProgressItem(`Unique emails found: ${this.emails.size}`, this.emails.size > 0 ? 'success' : 'info');
-        
-        if (failed.size > 0) {
-            this.addProgressItem(``, 'info');
-            this.addProgressItem(`Note: Some pages couldn't be fetched due to website restrictions.`, 'info');
-            this.addProgressItem(`For better results, try copying page content manually.`, 'info');
-        }
     }
 
     truncateUrl(url) {
@@ -334,72 +328,33 @@ class EmailExtractor {
     }
 
     async fetchUrlContent(url) {
-        const useProxy = this.useProxy ? this.useProxy.checked : true;
-        
-        // Method 1: Try direct fetch first (for CORS-enabled sites)
         try {
-            const response = await fetch(url, {
-                mode: 'cors',
-                headers: { 
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-                }
+            const response = await fetch(`${this.WORKER_URL}/fetch`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ url: url })
             });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+            }
+
+            const data = await response.json();
             
-            if (response.ok) {
-                const text = await response.text();
-                if (text && text.length > 100) {
-                    console.log('✓ Direct fetch successful');
-                    return text;
-                }
+            if (data.success && data.content) {
+                console.log(`✓ Fetched ${(data.contentLength / 1024).toFixed(1)} KB from ${url}`);
+                return data.content;
+            } else {
+                throw new Error(data.message || 'Failed to fetch content');
             }
+
         } catch (error) {
-            console.log('Direct fetch blocked, trying alternatives...');
+            console.error('Worker fetch error:', error);
+            throw error;
         }
-
-        // Method 2: Use CORS proxies (if enabled)
-        if (useProxy) {
-            const proxies = [
-                `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
-            ];
-
-            for (const proxyUrl of proxies) {
-                try {
-                    const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-                    
-                    const response = await fetch(proxyUrl, {
-                        method: 'GET',
-                        signal: controller.signal,
-                        headers: {
-                            'Accept': 'text/html,application/xhtml+xml'
-                        }
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (response.ok) {
-                        const text = await response.text();
-                        // Verify we got meaningful HTML content
-                        if (text && text.length > 100 && !text.includes('error')) {
-                            console.log('✓ Proxy fetch successful:', proxyUrl);
-                            return text;
-                        }
-                    }
-                } catch (error) {
-                    if (error.name === 'AbortError') {
-                        console.log('✗ Proxy timeout:', proxyUrl);
-                    } else {
-                        console.log('✗ Proxy failed:', proxyUrl);
-                    }
-                    continue;
-                }
-            }
-        }
-
-        // All methods failed
-        return null;
     }
 
     extractLinks(html, baseOrigin) {
@@ -457,7 +412,6 @@ class EmailExtractor {
     }
 
     processText(text, shouldRender = true) {
-        // Enhanced email regex pattern
         const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g;
         const matches = text.match(emailRegex);
 
@@ -500,27 +454,22 @@ class EmailExtractor {
     }
 
     validateEmail(email) {
-        // Comprehensive email validation
         const regex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
         
         if (!regex.test(email)) {
             return false;
         }
 
-        // Additional validation rules
         const [localPart, domain] = email.split('@');
         
-        // Check local part
         if (localPart.length > 64) return false;
         if (localPart.startsWith('.') || localPart.endsWith('.')) return false;
         if (localPart.includes('..')) return false;
         
-        // Check domain
         if (domain.length > 255) return false;
         if (domain.startsWith('-') || domain.endsWith('-')) return false;
         if (domain.startsWith('.') || domain.endsWith('.')) return false;
         
-        // Check for valid TLD
         const parts = domain.split('.');
         if (parts.length < 2) return false;
         const tld = parts[parts.length - 1];
@@ -534,7 +483,6 @@ class EmailExtractor {
         this.validateBtn.disabled = true;
 
         let validatedCount = 0;
-        const totalEmails = this.emails.size;
 
         this.emailData.forEach((data, email) => {
             const isValid = this.validateEmail(email);
@@ -576,6 +524,41 @@ class EmailExtractor {
             console.error('Failed to copy:', err);
             this.showStatus('Failed to copy to clipboard', 'error');
         });
+    }
+
+    downloadValidEmails() {
+        const validEmails = this.getValidEmails();
+        
+        if (validEmails.length === 0) {
+            this.showStatus('No valid emails to download. Validate emails first.', 'error');
+            return;
+        }
+
+        // Create CSV content with only valid emails
+        let csvContent = 'Email Address,Status,Validated At\n';
+        const timestamp = new Date().toLocaleString();
+        
+        validEmails.forEach(email => {
+            csvContent += `${email},Valid,${timestamp}\n`;
+        });
+
+        // Create blob and download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        const dateStr = new Date().toISOString().slice(0, 10);
+        link.setAttribute('href', url);
+        link.setAttribute('download', `valid-emails-${dateStr}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+        
+        this.showStatus(`Downloaded ${validEmails.length} valid emails as CSV`, 'success');
     }
 
     saveValidEmails(format) {
@@ -646,7 +629,7 @@ class EmailExtractor {
                 generated: new Date().toISOString(),
                 total_emails: emails.length,
                 status: 'valid',
-                tool: 'Email Extractor v1.0'
+                tool: 'QuickEmail Extractor v2.0'
             },
             emails: emails.map(email => ({
                 address: email,
@@ -771,10 +754,6 @@ class EmailExtractor {
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
-        @media print {
-            body { background: white; padding: 0; }
-            .copy-all { display: none; }
-        }
     </style>
 </head>
 <body>
@@ -801,20 +780,14 @@ class EmailExtractor {
         
         <div class="emails">
             <button class="copy-all" onclick="copyAllEmails()">📋 Copy All Emails</button>
-            <div class="email-grid" id="emailGrid">
-`;
-        
-        emails.forEach((email, index) => {
-            html += `                <div class="email-item" onclick="copyEmail('${email}')">${email}</div>\n`;
-        });
-        
-        html += `            </div>
+            <div class="email-grid">
+${emails.map(email => `                <div class="email-item" onclick="copyEmail('${email}')">${email}</div>`).join('\n')}
+            </div>
         </div>
         
         <div class="footer">
-            <p><strong>Email Extractor Tool</strong></p>
-            <p>Generated with Email Extractor v1.0 • ${emails.length} valid email addresses</p>
-            <p style="margin-top: 10px; font-size: 0.85rem;">Click any email to copy it individually</p>
+            <p><strong>QuickEmail Extractor Tool</strong></p>
+            <p>Generated with QuickEmail Extractor v2.0 • ${emails.length} valid email addresses</p>
         </div>
     </div>
     
@@ -822,21 +795,14 @@ class EmailExtractor {
         function copyEmail(email) {
             navigator.clipboard.writeText(email).then(() => {
                 alert('Copied: ' + email);
-            }).catch(err => {
-                console.error('Failed to copy:', err);
             });
         }
         
         function copyAllEmails() {
             const emails = Array.from(document.querySelectorAll('.email-item'))
                 .map(el => el.textContent);
-            const emailText = emails.join('\\n');
-            
-            navigator.clipboard.writeText(emailText).then(() => {
-                alert('Copied all ' + emails.length + ' emails to clipboard!');
-            }).catch(err => {
-                console.error('Failed to copy:', err);
-                alert('Failed to copy emails');
+            navigator.clipboard.writeText(emails.join('\\n')).then(() => {
+                alert('Copied all ' + emails.length + ' emails!');
             });
         }
     </script>
@@ -861,36 +827,6 @@ class EmailExtractor {
         URL.revokeObjectURL(url);
     }
 
-    downloadEmails() {
-        if (this.emails.size === 0) {
-            this.showStatus('No emails to download', 'error');
-            return;
-        }
-
-        const emailsArray = Array.from(this.emailData.values());
-        
-        // Create CSV content
-        let csvContent = 'Email,Status,Valid\n';
-        emailsArray.forEach(data => {
-            csvContent += `${data.email},${data.status},${data.valid !== null ? data.valid : 'N/A'}\n`;
-        });
-
-        // Create blob and download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        const url = URL.createObjectURL(blob);
-        
-        link.setAttribute('href', url);
-        link.setAttribute('download', `extracted-emails-${Date.now()}.csv`);
-        link.style.visibility = 'hidden';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        this.showStatus('Downloaded emails as CSV file', 'success');
-    }
-
     clearResults() {
         if (confirm('Are you sure you want to clear all results?')) {
             this.emails.clear();
@@ -909,7 +845,6 @@ class EmailExtractor {
     filterEmails(filter) {
         this.currentFilter = filter;
         
-        // Update active tab
         this.filterTabs.forEach(tab => {
             if (tab.dataset.filter === filter) {
                 tab.classList.add('active');
@@ -934,7 +869,6 @@ class EmailExtractor {
         const emailsArray = Array.from(this.emailData.values());
         let filteredEmails = emailsArray;
 
-        // Apply filter
         if (this.currentFilter === 'valid') {
             filteredEmails = emailsArray.filter(data => data.valid === true);
         } else if (this.currentFilter === 'invalid') {
