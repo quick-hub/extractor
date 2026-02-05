@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Email Extractor</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="grain-overlay"></div>
+    
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <h1 class="title">
+                    <span class="title-line">QuickEmail</span>
+                    <span class="title-line accent">Extractor</span>
+                </h1>
+                <p class="subtitle">Scrape and validate email addresses from any website</p>
+            </div>
+            <div class="stats-bar">
+                <div class="stat">
+                    <span class="stat-value" id="totalCount">0</span>
+                    <span class="stat-label">Extracted</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="validCount">0</span>
+                    <span class="stat-label">Valid</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-value" id="invalidCount">0</span>
+                    <span class="stat-label">Invalid</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="main">
+            <div class="info-banner">
+                <div class="info-icon">ℹ️</div>
+                <div class="info-content">
+                    <strong>CORS Proxy Enabled:</strong> This tool automatically uses proxy services to fetch websites. 
+                    Most sites will work, but some with strict security may require manual copy-paste.
+                </div>
+            </div>
+
+            <div class="input-section">
+                <div class="input-group">
+                    <label for="urlInput" class="input-label">Website URL</label>
+                    <div class="input-wrapper">
+                        <input 
+                            type="url" 
+                            id="urlInput" 
+                            class="url-input" 
+                            placeholder="https://example.com"
+                            autocomplete="off"
+                        >
+                        <button id="extractBtn" class="extract-btn">
+                            <span class="btn-text">Quick Extract</span>
+                            <span class="btn-icon">→</span>
+                        </button>
+                        <button id="deepSearchBtn" class="extract-btn deep">
+                            <span class="btn-text">Deep Search</span>
+                            <span class="btn-icon">🔍</span>
+                        </button>
+                    </div>
+                    <div class="deep-search-options">
+                        <div class="option-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="followLinks" checked>
+                                <span>Follow internal links</span>
+                            </label>
+                        </div>
+                        <div class="option-group">
+                            <label for="maxDepth" class="option-label">Max depth:</label>
+                            <input type="number" id="maxDepth" class="number-input" value="2" min="1" max="5">
+                        </div>
+                        <div class="option-group">
+                            <label for="maxPages" class="option-label">Max pages:</label>
+                            <input type="number" id="maxPages" class="number-input" value="10" min="1" max="50">
+                        </div>
+                        <div class="option-group">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="useProxy" checked>
+                                <span>Use CORS proxy</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="textInput" class="input-label">Or paste text directly</label>
+                    <textarea 
+                        id="textInput" 
+                        class="text-input" 
+                        placeholder="Paste any text containing email addresses here..."
+                        rows="4"
+                    ></textarea>
+                    <button id="extractTextBtn" class="extract-btn secondary">
+                        <span class="btn-text">Extract from Text</span>
+                        <span class="btn-icon">→</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="status-message" id="statusMessage"></div>
+
+            <div class="progress-section" id="progressSection">
+                <div class="progress-header">
+                    <span class="progress-label">Scanning progress</span>
+                    <span class="progress-stats" id="progressStats">0 / 0 pages</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="progress-details" id="progressDetails"></div>
+            </div>
+
+            <div class="results-section" id="resultsSection">
+                <div class="results-header">
+                    <h2 class="results-title">Extracted Emails</h2>
+                    <div class="results-actions">
+                        <button id="validateBtn" class="action-btn">
+                            <span class="btn-icon">✓</span>
+                            Validate All
+                        </button>
+                        <button id="copyBtn" class="action-btn">
+                            <span class="btn-icon">⎘</span>
+                            Copy Valid
+                        </button>
+                        <div class="dropdown-wrapper">
+                            <button id="saveBtn" class="action-btn save-btn">
+                                <span class="btn-icon">💾</span>
+                                Save Valid
+                                <span class="dropdown-arrow">▼</span>
+                            </button>
+                            <div class="dropdown-menu" id="saveMenu">
+                                <button class="dropdown-item" data-format="txt">
+                                    <span class="format-icon">📄</span>
+                                    <span class="format-info">
+                                        <span class="format-name">Plain Text (.txt)</span>
+                                        <span class="format-desc">One email per line</span>
+                                    </span>
+                                </button>
+                                <button class="dropdown-item" data-format="csv">
+                                    <span class="format-icon">📊</span>
+                                    <span class="format-info">
+                                        <span class="format-name">CSV (.csv)</span>
+                                        <span class="format-desc">Spreadsheet format</span>
+                                    </span>
+                                </button>
+                                <button class="dropdown-item" data-format="json">
+                                    <span class="format-icon">🔧</span>
+                                    <span class="format-info">
+                                        <span class="format-name">JSON (.json)</span>
+                                        <span class="format-desc">Developer format</span>
+                                    </span>
+                                </button>
+                                <button class="dropdown-item" data-format="html">
+                                    <span class="format-icon">🌐</span>
+                                    <span class="format-info">
+                                        <span class="format-name">HTML (.html)</span>
+                                        <span class="format-desc">Web page format</span>
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                        <button id="downloadBtn" class="action-btn">
+                            <span class="btn-icon">↓</span>
+                            Download All
+                        </button>
+                        <button id="clearBtn" class="action-btn danger">
+                            <span class="btn-icon">×</span>
+                            Clear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-filter="all">All</button>
+                    <button class="filter-tab" data-filter="valid">Valid</button>
+                    <button class="filter-tab" data-filter="invalid">Invalid</button>
+                    <button class="filter-tab" data-filter="unchecked">Unchecked</button>
+                </div>
+
+                <div class="emails-list" id="emailsList"></div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Built with HTML, CSS & JavaScript • Email validation powered by regex & syntax checking</p>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
