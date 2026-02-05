@@ -1,5 +1,5 @@
 /**
- * Lite 1.6 Email Extractor - Client Script
+ * Quick Email Extractor - Client Script
  * Professional email extraction tool with Cloudflare Worker integration
  */
 
@@ -711,6 +711,6 @@ class EmailExtractor {
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('🚀 Lite 1.6 Email Extractor ready');
+    console.log('🚀 Quick Email Extractor ready');
     new EmailExtractor();
 });
