@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Lite 1.6 Email Extractor - Professional tool to extract and validate email addresses from text, websites, and documents">
-    <title>QuickEmail Extractor | Professional Email Extraction Tool</title>
+    <meta name="description" content="Quick Email Extractor - Professional tool to extract and validate email addresses from text, websites, and documents">
+    <title>Quick Email Extractor | Professional Email Extraction Tool</title>
     
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,8 +16,8 @@
         <!-- Header -->
         <header class="header">
             <div class="logo">
-                <div class="logo-icon">QE</div>
-                <h1>QuickEmail Extractor</h1>
+                <div class="logo-icon">Q1.0</div>
+                <h1>Quick Email Extractor</h1>
             </div>
             <p class="subtitle">Professional tool to extract, validate, and organize email addresses</p>
             <div class="status-bar">
@@ -102,7 +102,7 @@
             </div>
 
             <!-- Output Card -->
-            <div class="card">
+            <div class="card" id="resultsSection">
                 <div class="card-header">
                     <div class="card-title">
                         <div class="card-icon">✉️</div>
@@ -163,7 +163,7 @@
                 </div>
 
                 <!-- Output Preview -->
-                <div class="output-preview-section" id="outputPreviewSection" style="display: none;">
+                <div class="output-preview-section" id="outputPreviewSection">
                     <h3 class="options-title">Output Preview</h3>
                     <div class="output-preview" id="outputPreview">
                         <div class="empty-state">
@@ -205,13 +205,14 @@
 
         <!-- Footer -->
         <footer class="footer">
-            <p> QuickEmail Extractor | Powered by Cloudflare Workers</p>
+            <p>Quick Email Extractor | Powered by Cloudflare Workers</p>
             <p class="footer-links">
+
                 Professional Edition
             </p>
         </footer>
     </div>
 
-    <script src="email-extractor-client.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
