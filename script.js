@@ -77,8 +77,8 @@ class EmailExtractor {
     }
 
     async fetchUrlContent(url) {
-        // CRITICAL: Endpoint is /extract NOT /fetch
-        const res = await fetch(`${this.WORKER_URL}/extract`, {
+        // Using /fetch endpoint
+        const res = await fetch(`${this.WORKER_URL}/fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
@@ -99,7 +99,7 @@ class EmailExtractor {
     }
 
     async fetchUrlsInBatch(urls) {
-        const res = await fetch(`${this.WORKER_URL}/batch-extract`, {
+        const res = await fetch(`${this.WORKER_URL}/batch-fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ urls })
