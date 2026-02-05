@@ -1,4 +1,4 @@
-// QuickEmail Extractor - Professional Version 2.1 (Hardened & Fixed)
+// QuickEmail Extractor - Professional Version 2.1 (Fixed)
 class EmailExtractor {
     constructor() {
         this.WORKER_URL = 'https://email-extractor-worker.quick3830.workers.dev';
@@ -68,7 +68,7 @@ class EmailExtractor {
 
     async testWorker() {
         try {
-            const res = await fetch(this.WORKER_URL);
+            const res = await fetch(`${this.WORKER_URL}/health`);
             if (!res.ok) throw new Error();
             console.log('☁️ Cloudflare Worker reachable');
         } catch {
@@ -77,22 +77,44 @@ class EmailExtractor {
     }
 
     async fetchUrlContent(url) {
-        const res = await fetch(`${this.WORKER_URL}/fetch`, {
+        const res = await fetch(`${this.WORKER_URL}/extract`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url })
         });
 
         if (!res.ok) {
-            throw new Error(`Worker error (${res.status})`);
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || `Worker error (${res.status})`);
         }
 
         const data = await res.json();
-        if (!data.success || !data.content) {
-            throw new Error('Worker returned empty content');
+        if (!data.success) {
+            throw new Error(data.error || 'Worker returned error');
         }
 
-        return data.content;
+        // Worker returns emails directly, but we also want the HTML for link extraction
+        return { emails: data.emails || [], count: data.count || 0 };
+    }
+
+    async fetchUrlsInBatch(urls) {
+        const res = await fetch(`${this.WORKER_URL}/batch-extract`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ urls })
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || `Worker error (${res.status})`);
+        }
+
+        const data = await res.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Batch extraction failed');
+        }
+
+        return data.results || [];
     }
 
     /* ================= EXTRACTION ================= */
@@ -113,8 +135,8 @@ class EmailExtractor {
         this.showStatus('Fetching page…', 'loading');
 
         try {
-            const html = await this.fetchUrlContent(url);
-            const count = this.processText(html);
+            const result = await this.fetchUrlContent(url);
+            const count = this.addEmailsFromArray(result.emails);
             this.finalizeExtraction(count);
         } catch (e) {
             this.showStatus(e.message, 'error');
@@ -137,35 +159,62 @@ class EmailExtractor {
 
         this.clearProgress();
         this.showProgress();
+        this.isProcessing = true;
 
-        while (queue.length && visited.size < maxPages) {
-            const { url, depth } = queue.shift();
-            if (visited.has(url) || depth > maxDepth) continue;
+        try {
+            while (queue.length && visited.size < maxPages) {
+                const { url, depth } = queue.shift();
+                if (visited.has(url) || depth > maxDepth) continue;
 
-            visited.add(url);
-            this.updateProgress(visited.size, maxPages, url);
+                visited.add(url);
+                this.updateProgress(visited.size, maxPages, url);
 
-            try {
-                const html = await this.fetchUrlContent(url);
-                this.processText(html, false);
+                try {
+                    // Use worker to extract emails
+                    const result = await this.fetchUrlContent(url);
+                    this.addEmailsFromArray(result.emails, false);
 
-                if (followLinks && depth < maxDepth) {
-                    this.extractLinks(html, base).forEach(link => {
-                        if (!visited.has(link)) {
-                            queue.push({ url: link, depth: depth + 1 });
-                        }
-                    });
+                    // If we need to follow links, we need the HTML
+                    // For now, skip link following as worker doesn't return HTML
+                    // Alternative: add a separate endpoint that returns both
+                    
+                } catch (err) {
+                    console.warn(`Failed to fetch ${url}:`, err.message);
                 }
-            } catch {}
-            await new Promise(r => setTimeout(r, 400));
+                
+                await new Promise(r => setTimeout(r, 400));
+            }
+
+            this.renderEmails();
+            this.updateStats();
+            this.showStatus(`Deep search complete (${this.emails.size} emails)`, 'success');
+        } catch (e) {
+            this.showStatus(`Deep search error: ${e.message}`, 'error');
         }
 
-        this.renderEmails();
-        this.updateStats();
-        this.showStatus(`Deep search complete (${this.emails.size} emails)`, 'success');
+        this.isProcessing = false;
     }
 
     /* ================= CORE LOGIC ================= */
+
+    addEmailsFromArray(emailArray, render = true) {
+        let added = 0;
+        for (const email of emailArray) {
+            const e = email.toLowerCase();
+            if (!this.emails.has(e)) {
+                this.emails.add(e);
+                this.emailData.set(e, { email: e, valid: null, status: 'unchecked' });
+                added++;
+            }
+        }
+
+        if (render && added) {
+            this.renderEmails();
+            this.updateStats();
+        }
+
+        return added;
+    }
 
     processText(raw, render = true) {
         const clean = this.normalizeText(raw);
@@ -238,14 +287,18 @@ class EmailExtractor {
         [...this.emailData.values()].forEach(d => {
             if (
                 this.currentFilter !== 'all' &&
-                (this.currentFilter === 'valid') !== d.valid &&
-                this.currentFilter !== 'unchecked'
+                (this.currentFilter === 'valid' && !d.valid) &&
+                (this.currentFilter === 'invalid' && d.valid !== false) &&
+                (this.currentFilter === 'unchecked' && d.status !== 'unchecked')
             ) return;
 
             const div = document.createElement('div');
             div.className = `email-item ${d.status}`;
             div.textContent = d.email;
-            div.onclick = () => navigator.clipboard.writeText(d.email);
+            div.onclick = () => {
+                navigator.clipboard.writeText(d.email);
+                this.showStatus('Copied!', 'success');
+            };
             this.emailsList.appendChild(div);
         });
     }
