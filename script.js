@@ -77,6 +77,7 @@ class EmailExtractor {
     }
 
     async fetchUrlContent(url) {
+        // CRITICAL: Endpoint is /extract NOT /fetch
         const res = await fetch(`${this.WORKER_URL}/extract`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -93,7 +94,7 @@ class EmailExtractor {
             throw new Error(data.error || 'Worker returned error');
         }
 
-        // Worker returns emails directly, but we also want the HTML for link extraction
+        // Worker returns emails directly
         return { emails: data.emails || [], count: data.count || 0 };
     }
 
