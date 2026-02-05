@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuickEmail Extractor</title>
+    <title>QuickEmail Extractor - Professional Email Scraping Tool</title>
+    <meta name="description" content="Extract and validate email addresses from any website with our professional email scraping tool">
     <link rel="stylesheet" href="styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +20,7 @@
                     <span class="title-line">QuickEmail</span>
                     <span class="title-line accent">Extractor</span>
                 </h1>
-                <p class="subtitle">Scrape and validate email addresses from any website</p>
+                <p class="subtitle">Professional email extraction and validation tool</p>
             </div>
             <div class="stats-bar">
                 <div class="stat">
@@ -38,16 +39,27 @@
         </header>
 
         <main class="main">
+            <!-- Configuration Notice -->
+            <div class="config-banner" id="configBanner">
+                <div class="info-icon">⚠️</div>
+                <div class="info-content">
+                </div>
+            </div>
+
             <div class="info-banner">
                 <div class="info-icon">ℹ️</div>
                 <div class="info-content">
-                    <strong>Cloudflare Worker Enabled:</strong> This tool uses a Cloudflare Worker backend to bypass CORS and fetch websites reliably.
+                    <strong>Cloudflare Worker Enabled:</strong> This tool uses a Cloudflare Worker backend to bypass CORS restrictions and fetch websites reliably. Deep search can crawl multiple pages following internal links.
                 </div>
             </div>
 
             <div class="input-section">
+                <!-- URL Extraction -->
                 <div class="input-group">
-                    <label for="urlInput" class="input-label">Website URL</label>
+                    <label for="urlInput" class="input-label">
+                        <span class="label-text">Website URL</span>
+                        <span class="label-hint">Enter any public website URL</span>
+                    </label>
                     <div class="input-wrapper">
                         <input 
                             type="url" 
@@ -55,6 +67,7 @@
                             class="url-input" 
                             placeholder="https://example.com"
                             autocomplete="off"
+                            spellcheck="false"
                         >
                         <button id="extractBtn" class="extract-btn">
                             <span class="btn-text">Quick Extract</span>
@@ -65,6 +78,8 @@
                             <span class="btn-icon">🔍</span>
                         </button>
                     </div>
+                    
+                    <!-- Deep Search Options -->
                     <div class="deep-search-options">
                         <div class="option-group">
                             <label class="checkbox-label">
@@ -80,22 +95,21 @@
                             <label for="maxPages" class="option-label">Max pages:</label>
                             <input type="number" id="maxPages" class="number-input" value="10" min="1" max="50">
                         </div>
-                        <div class="option-group">
-                            <label class="checkbox-label">
-                                <input type="checkbox" id="useProxy" checked>
-                                <span>Use Worker proxy</span>
-                            </label>
-                        </div>
                     </div>
                 </div>
 
+                <!-- Text Extraction -->
                 <div class="input-group">
-                    <label for="textInput" class="input-label">Or paste text directly</label>
+                    <label for="textInput" class="input-label">
+                        <span class="label-text">Or paste text directly</span>
+                        <span class="label-hint">Extract emails from any text content</span>
+                    </label>
                     <textarea 
                         id="textInput" 
                         class="text-input" 
                         placeholder="Paste any text containing email addresses here..."
-                        rows="4"
+                        rows="5"
+                        spellcheck="false"
                     ></textarea>
                     <button id="extractTextBtn" class="extract-btn secondary">
                         <span class="btn-text">Extract from Text</span>
@@ -104,11 +118,13 @@
                 </div>
             </div>
 
+            <!-- Status Message -->
             <div class="status-message" id="statusMessage"></div>
 
+            <!-- Progress Section -->
             <div class="progress-section" id="progressSection">
                 <div class="progress-header">
-                    <span class="progress-label">Scanning progress</span>
+                    <span class="progress-label">Scanning Progress</span>
                     <span class="progress-stats" id="progressStats">0 / 0 pages</span>
                 </div>
                 <div class="progress-bar">
@@ -117,22 +133,23 @@
                 <div class="progress-details" id="progressDetails"></div>
             </div>
 
+            <!-- Results Section -->
             <div class="results-section" id="resultsSection">
                 <div class="results-header">
                     <h2 class="results-title">Extracted Emails</h2>
                     <div class="results-actions">
                         <button id="validateBtn" class="action-btn">
                             <span class="btn-icon">✓</span>
-                            Validate All
+                            <span>Validate All</span>
                         </button>
                         <button id="copyBtn" class="action-btn">
-                            <span class="btn-icon">⎘</span>
-                            Copy Valid
+                            <span class="btn-icon">📋</span>
+                            <span>Copy Valid</span>
                         </button>
                         <div class="dropdown-wrapper">
                             <button id="saveBtn" class="action-btn save-btn">
                                 <span class="btn-icon">💾</span>
-                                Save Valid
+                                <span>Save Valid</span>
                                 <span class="dropdown-arrow">▼</span>
                             </button>
                             <div class="dropdown-menu" id="saveMenu">
@@ -166,30 +183,29 @@
                                 </button>
                             </div>
                         </div>
-                        <button id="downloadBtn" class="action-btn">
-                            <span class="btn-icon">↓</span>
-                            Download Valid
-                        </button>
                         <button id="clearBtn" class="action-btn danger">
                             <span class="btn-icon">×</span>
-                            Clear
+                            <span>Clear All</span>
                         </button>
                     </div>
                 </div>
 
+                <!-- Filter Tabs -->
                 <div class="filter-tabs">
-                    <button class="filter-tab active" data-filter="all">All</button>
-                    <button class="filter-tab" data-filter="valid">Valid</button>
-                    <button class="filter-tab" data-filter="invalid">Invalid</button>
+                    <button class="filter-tab active" data-filter="all">All Emails</button>
+                    <button class="filter-tab" data-filter="valid">Valid Only</button>
+                    <button class="filter-tab" data-filter="invalid">Invalid Only</button>
                     <button class="filter-tab" data-filter="unchecked">Unchecked</button>
                 </div>
 
+                <!-- Emails List -->
                 <div class="emails-list" id="emailsList"></div>
             </div>
         </main>
 
         <footer class="footer">
-            <p>Built with HTML, CSS & JavaScript • Powered by Cloudflare Workers • Email validation by regex</p>
+            <p>QuickEmail Extractor v2.0 • Built with HTML, CSS & JavaScript</p>
+            <p>Powered by Cloudflare Workers • Email validation by RFC 5322 regex</p>
         </footer>
     </div>
 
